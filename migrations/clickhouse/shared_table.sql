@@ -1,6 +1,8 @@
--- Shared table for all services
-CREATE TABLE IF NOT EXISTS {database}.{table} (
-    timestamp      DateTime64(3, 'UTC'),
+
+DROP TABLE IF EXISTS default.service_logs;
+
+CREATE TABLE IF NOT EXISTS service_logs (
+    timestamp      String,
     level          String,
     target         String,
     module_path    Nullable(String),

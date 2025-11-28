@@ -6,14 +6,23 @@ use serde::Serialize;
 use std::error::Error;
 use urlencoding;
 
+/// Configuration for [`ClickHouseSink`].
+///
+/// The sink talks to ClickHouse over HTTP using the `JSONEachRow` format.
+/// It supports both dedicated-table per service and shared-table modes by
+/// toggling the `service_name` field and selected table.
 #[derive(Clone, Debug)]
 pub struct ClickHouseConfig {
+    /// Base URL without query, e.g. "http://127.0.0.1:8123"
     pub url: String,
     pub database: String,
     pub table: String,
     pub service_name: Option<String>,
+    pub user: Option<String>,
+    pub password: Option<String>,
 }
 
+/// ClickHouse implementation of [`LogSink`] using the HTTP interface.
 #[derive(Clone)]
 pub struct ClickHouseSink {
     client: Client,
@@ -21,13 +30,34 @@ pub struct ClickHouseSink {
 }
 
 impl ClickHouseSink {
+    /// Construct a new sink instance using the provided configuration.
+    ///
+    /// **Parameters**
+    /// - `config`: [`ClickHouseConfig`] describing target URL, database,
+    ///   table and optional authentication settings.
+    ///
+    /// **Returns**
+    /// - A ready-to-use [`ClickHouseSink`] that can be passed into
+    ///   [`init_tracing`] / [`init_tracing_with_config`].
     pub fn new(config: ClickHouseConfig) -> Self {
         let client = Client::new();
         Self { client, config }
     }
 
     fn endpoint(&self) -> String {
-        format!("{}/?database={}&query=INSERT%20INTO%20{}%20FORMAT%20JSONEachRow", self.config.url, self.config.database, self.config.table)
+        let mut query = format!(
+            "database={}&query=INSERT%20INTO%20{}%20FORMAT%20JSONEachRow",
+            self.config.database, self.config.table
+        );
+
+        if let Some(user) = &self.config.user {
+            query.push_str(&format!("&user={}", urlencoding::encode(user)));
+        }
+        if let Some(password) = &self.config.password {
+            query.push_str(&format!("&password={}", urlencoding::encode(password)));
+        }
+
+        format!("{}/?{}", self.config.url, query)
     }
 
     fn map_record(&self, record: &LogRecord) -> ClickHouseRow {
@@ -44,9 +74,29 @@ impl ClickHouseSink {
         }
     }
 
+    /// Validate that the target ClickHouse table exposes the expected
+    /// columns. This is optional and is not called automatically.
+    ///
+    /// **Returns**
+    /// - `Ok(())` if the `DESCRIBE TABLE` query succeeded.
+    /// - `Err(..)` if ClickHouse responded with a non-success status.
     pub async fn validate_schema(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let query = format!("DESCRIBE TABLE {}.{} FORMAT JSON", self.config.database, self.config.table);
-        let url = format!("{}/?query={}", self.config.url, urlencoding::encode(&query));
+        let mut query = format!(
+            "query={}",
+            urlencoding::encode(&format!(
+                "DESCRIBE TABLE {}.{} FORMAT JSON",
+                self.config.database, self.config.table
+            ))
+        );
+
+        if let Some(user) = &self.config.user {
+            query.push_str(&format!("&user={}", urlencoding::encode(user)));
+        }
+        if let Some(password) = &self.config.password {
+            query.push_str(&format!("&password={}", urlencoding::encode(password)));
+        }
+
+        let url = format!("{}/?{}", self.config.url, query);
         let resp = self.client.get(&url).send().await?;
         if !resp.status().is_success() {
             return Err(format!("ClickHouse schema validation failed with status {}", resp.status()).into());
@@ -79,7 +129,9 @@ impl LogSink for ClickHouseSink {
         if resp.status().is_success() {
             Ok(())
         } else {
-            Err(format!("ClickHouse insert failed with status {}", resp.status()).into())
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_else(|_| "<no body>".to_string());
+            Err(format!("ClickHouse insert failed with status {}: {}", status, text).into())
         }
     }
 }

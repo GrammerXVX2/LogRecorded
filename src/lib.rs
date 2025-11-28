@@ -6,3 +6,4 @@ pub mod layer;
 pub mod clickhouse;
 
 pub mod init;
+pub mod noop_sink;

@@ -1,6 +1,6 @@
 [package]
 name = "tracing-log-sink"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 authors = ["Your Name <you@example.com>"]
@@ -10,6 +10,14 @@ repository = ""
 [lib]
 name = "tracing_log_sink"
 path = "src/lib.rs"
+
+[[example]]
+name = "default_load"
+path = "examples_load/default_load.rs"
+
+[[example]]
+name = "custom_load"
+path = "examples_load/custom_load.rs"
 
 [features]
 default = ["clickhouse"]
