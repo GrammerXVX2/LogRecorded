@@ -14,6 +14,7 @@ async fn main() {
         channel_buffer: 50_000,
         batch_size: 1_000,
         flush_interval: Duration::from_millis(200),
+        enable_stdout: false,
     };
 
     init_tracing_with_config(sink, layer_config);

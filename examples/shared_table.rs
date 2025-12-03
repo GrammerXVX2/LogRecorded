@@ -23,6 +23,7 @@ async fn main() {
             channel_buffer: 10_000,
             batch_size: 500,
             flush_interval: Duration::from_millis(500),
+            enable_stdout: true,
         };
         init_tracing_with_config(sink, layer_config);
     }

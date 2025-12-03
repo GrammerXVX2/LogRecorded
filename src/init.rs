@@ -5,23 +5,26 @@ use tokio::time::Duration;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Registry;
 
-/// Configuration for the logging layer.
+/// Конфигурация слоя логирования.
 ///
-/// Controls the size of the internal channel buffer, the maximum
-/// batch size used when flushing to the sink, and how often pending
-/// batches are flushed even if they are not full.
+/// Управляет размером внутреннего буфера, максимальным размером батча
+/// при отправке в sink, частотой принудительного flush, а также тем,
+/// нужно ли дополнительно печатать логи в консоль через `fmt`‑слой.
 ///
-/// **Fields**
-/// - `channel_buffer`: maximum number of [`LogRecord`]s that can be
-///   queued in memory before new records start to be dropped.
-/// - `batch_size`: number of records sent to the sink in a single batch.
-/// - `flush_interval`: maximum time the layer will wait before flushing
-///   a non-empty batch even if it did not reach `batch_size`.
+/// **Поля**
+/// - `channel_buffer`: максимальное число [`LogRecord`] в очереди до
+///   начала дропа новых записей.
+/// - `batch_size`: размер батча для отправки в sink.
+/// - `flush_interval`: максимальный интервал между flush’ами даже при
+///   неполном батче.
+/// - `enable_stdout`: если `true`, поверх `ErrorLogLayer` добавляется
+///   `tracing_subscriber::fmt::Layer` и ошибки печатаются в консоль.
 #[derive(Clone, Debug)]
 pub struct LayerConfig {
     pub channel_buffer: usize,
     pub batch_size: usize,
     pub flush_interval: Duration,
+    pub enable_stdout: bool,
 }
 
 impl Default for LayerConfig {
@@ -30,6 +33,7 @@ impl Default for LayerConfig {
             channel_buffer: 1024,
             batch_size: 128,
             flush_interval: Duration::from_secs(1),
+            enable_stdout: true,
         }
     }
 }
@@ -56,8 +60,18 @@ pub fn init_tracing_with_config(sink: Arc<dyn LogSink>, config: LayerConfig) {
         config.flush_interval,
     );
 
-    let subscriber = Registry::default().with(layer);
-    tracing::subscriber::set_global_default(subscriber).expect("set global subscriber");
+    // Всегда подключаем слой, который пишет в внешний sink (БД и т.д.).
+    // Дополнительно, при `enable_stdout = true`, подключаем `fmt`‑слой,
+    // чтобы видеть события в консоли. Для совместимости типов собираем
+    // subscriber в двух вариантах.
+    if config.enable_stdout {
+        let fmt_layer = tracing_subscriber::fmt::layer();
+        let subscriber = Registry::default().with(layer).with(fmt_layer);
+        tracing::subscriber::set_global_default(subscriber).expect("set global subscriber");
+    } else {
+        let subscriber = Registry::default().with(layer);
+        tracing::subscriber::set_global_default(subscriber).expect("set global subscriber");
+    }
 }
 
 /// Initialize tracing with sensible defaults.

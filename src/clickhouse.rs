@@ -125,7 +125,7 @@ impl LogSink for ClickHouseSink {
     async fn send(&self, record: &LogRecord) -> Result<(), Box<dyn Error + Send + Sync>> {
         let row = self.map_record(record);
         let body = serde_json::to_string(&row)? + "\n";
-        let resp = self.client.post(&self.endpoint()).body(body).send().await?;
+        let resp = self.client.post(self.endpoint()).body(body).send().await?;
         if resp.status().is_success() {
             Ok(())
         } else {
